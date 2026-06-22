@@ -347,6 +347,49 @@ function App() {
     });
   }
 
+  function updateReimbursementStatus(id, reimbursementStatus) {
+    const now = new Date().toISOString();
+    commitState({
+      ...state,
+      transactions: state.transactions.map((transaction) =>
+        transaction.id === id
+          ? {
+              ...transaction,
+              isTrip: reimbursementStatus === "none" ? transaction.isTrip : true,
+              reimbursementStatus,
+              updatedAt: now,
+            }
+          : transaction
+      ),
+    });
+  }
+
+  function updateTripReimbursementStatus(tripId, reimbursementStatus) {
+    const now = new Date().toISOString();
+    commitState({
+      ...state,
+      trips: state.trips.map((trip) =>
+        trip.id === tripId
+          ? {
+              ...trip,
+              status: reimbursementStatus === "reimbursed" ? "reimbursed" : "active",
+              updatedAt: now,
+            }
+          : trip
+      ),
+      transactions: state.transactions.map((transaction) =>
+        !transaction.deletedAt && transaction.tripId === tripId && transaction.type === "expense"
+          ? {
+              ...transaction,
+              isTrip: true,
+              reimbursementStatus,
+              updatedAt: now,
+            }
+          : transaction
+      ),
+    });
+  }
+
   function addTrip(event) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -812,7 +855,13 @@ function App() {
                 <option value="normal">非差旅</option>
               </select>
             </div>
-            <TransactionTable rows={filteredTransactions} attachments={state.attachments || []} getAccountName={getAccountName} onDelete={deleteTransaction} />
+            <TransactionTable
+              rows={filteredTransactions}
+              attachments={state.attachments || []}
+              getAccountName={getAccountName}
+              onDelete={deleteTransaction}
+              onStatusChange={updateReimbursementStatus}
+            />
           </>
         )}
 
@@ -834,7 +883,7 @@ function App() {
                 <h3>差旅项目</h3>
                 <button className="ghost-btn" type="button" onClick={exportTripCsv}>导出报销 CSV</button>
               </div>
-              <TripList trips={state.trips} transactions={state.transactions} />
+              <TripList trips={state.trips} transactions={state.transactions} onBatchStatusChange={updateTripReimbursementStatus} />
             </section>
           </div>
         )}
@@ -1054,26 +1103,37 @@ function Bars({ rows }) {
   return <div className="bars">{rows.map(([label, amount]) => <div className="bar-row" key={label}><div className="bar-label"><span>{label}</span><strong>{money(amount)}</strong></div><div className="bar-track"><div className="bar-fill" style={{ width: `${Math.max((amount / max) * 100, 4)}%` }}></div></div></div>)}</div>;
 }
 
-function TransactionTable({ rows, attachments, getAccountName, onDelete }) {
-  const statusMap = { none: "-", pending: "待整理", submitted: "已提交", reimbursed: "已报销" };
+function ReimbursementStatusSelect({ value, onChange }) {
+  return (
+    <select className="status-select" value={value || "none"} onChange={(event) => onChange(event.target.value)}>
+      <option value="pending">待整理</option>
+      <option value="submitted">已提交</option>
+      <option value="reimbursed">已报销</option>
+      <option value="none">不报销</option>
+    </select>
+  );
+}
+
+function TransactionTable({ rows, attachments, getAccountName, onDelete, onStatusChange }) {
   return (
     <div className="table-wrap"><table><thead><tr><th>日期</th><th>类型</th><th>分类</th><th>商户/备注</th><th>账户</th><th>报销</th><th>凭证</th><th className="num">金额</th><th></th></tr></thead><tbody>
       {rows.length ? rows.map((row) => {
         const files = getTransactionAttachments(row, attachments);
-        return <tr key={row.id}><td>{row.occurredAt}</td><td>{row.type === "income" ? "收入" : "支出"}</td><td>{row.category}</td><td>{row.merchant || row.note || "-"}</td><td>{getAccountName(row.account)}</td><td>{row.isTrip ? statusMap[row.reimbursementStatus] || "待整理" : "-"}</td><td><AttachmentLinks files={files} /></td><td className={`num ${row.type === "income" ? "money-income" : "money-expense"}`}>{row.type === "income" ? "+" : "-"}{money(row.amount)}</td><td><button className="delete-btn" type="button" onClick={() => onDelete(row.id)}>删除</button></td></tr>;
+        return <tr key={row.id}><td>{row.occurredAt}</td><td>{row.type === "income" ? "收入" : "支出"}</td><td>{row.category}</td><td>{row.merchant || row.note || "-"}</td><td>{getAccountName(row.account)}</td><td>{row.type === "expense" ? <ReimbursementStatusSelect value={row.reimbursementStatus} onChange={(status) => onStatusChange(row.id, status)} /> : "-"}</td><td><AttachmentLinks files={files} /></td><td className={`num ${row.type === "income" ? "money-income" : "money-expense"}`}>{row.type === "income" ? "+" : "-"}{money(row.amount)}</td><td><button className="delete-btn" type="button" onClick={() => onDelete(row.id)}>删除</button></td></tr>;
       }) : <tr><td colSpan="9">没有匹配的流水。</td></tr>}
     </tbody></table></div>
   );
 }
 
-function TripList({ trips, transactions }) {
+function TripList({ trips, transactions, onBatchStatusChange }) {
   if (!trips.length) return <div className="empty">还没有差旅项目。</div>;
   return <div className="trip-list">{trips.map((trip) => {
     const rows = transactions.filter((item) => !item.deletedAt && item.tripId === trip.id);
     const total = rows.filter((item) => item.type === "expense").reduce((sum, item) => sum + Number(item.amount), 0);
     const pending = rows.filter((item) => item.type === "expense" && ["pending", "submitted"].includes(item.reimbursementStatus)).reduce((sum, item) => sum + Number(item.amount), 0);
     const reimbursed = rows.filter((item) => item.type === "expense" && item.reimbursementStatus === "reimbursed").reduce((sum, item) => sum + Number(item.amount), 0);
-    return <article className="trip-item" key={trip.id}><div className="transaction-row"><strong>{trip.name}</strong><span className="transaction-meta">{trip.startDate || "-"} 至 {trip.endDate || "-"}</span></div><div className="transaction-meta">{trip.destination || "未填地点"} · {trip.purpose || "未填事由"}</div><div className="trip-stats"><div className="trip-stat"><span>总支出</span><strong>{money(total)}</strong></div><div className="trip-stat"><span>待报销</span><strong>{money(pending)}</strong></div><div className="trip-stat"><span>已报销</span><strong>{money(reimbursed)}</strong></div><div className="trip-stat"><span>流水数</span><strong>{rows.length}</strong></div></div></article>;
+    const hasExpenses = rows.some((item) => item.type === "expense");
+    return <article className="trip-item" key={trip.id}><div className="transaction-row"><strong>{trip.name}</strong><span className="transaction-meta">{trip.startDate || "-"} 至 {trip.endDate || "-"}</span></div><div className="transaction-meta">{trip.destination || "未填地点"} · {trip.purpose || "未填事由"}</div><div className="trip-stats"><div className="trip-stat"><span>总支出</span><strong>{money(total)}</strong></div><div className="trip-stat"><span>待报销</span><strong>{money(pending)}</strong></div><div className="trip-stat"><span>已报销</span><strong>{money(reimbursed)}</strong></div><div className="trip-stat"><span>流水数</span><strong>{rows.length}</strong></div></div><div className="trip-actions"><button className="ghost-btn" type="button" disabled={!hasExpenses} onClick={() => onBatchStatusChange(trip.id, "submitted")}>全部标记已提交</button><button className="primary-btn" type="button" disabled={!hasExpenses} onClick={() => onBatchStatusChange(trip.id, "reimbursed")}>全部标记已报销</button></div></article>;
   })}</div>;
 }
 

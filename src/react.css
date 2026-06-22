@@ -42,6 +42,20 @@
   text-decoration: underline;
 }
 
+.status-select {
+  min-width: 96px;
+  min-height: 34px;
+  padding: 6px 8px;
+  font-size: 13px;
+}
+
+.trip-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+
 .budget-snapshot {
   margin-bottom: 18px;
 }
