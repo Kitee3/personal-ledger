@@ -20,6 +20,12 @@
   margin-top: 10px;
 }
 
+.quick-entry-hint {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .attachment-links {
   display: flex;
   flex-wrap: wrap;

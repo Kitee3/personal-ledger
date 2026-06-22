@@ -203,6 +203,19 @@ function guessAccount({ merchant, note, fallback }) {
   return fallback || "wechat";
 }
 
+function resolveEntryFields({ form, type, fallbackAccount }) {
+  const merchant = String(form.get("merchant") || "").trim();
+  const note = String(form.get("note") || "").trim();
+  const selectedCategory = String(form.get("category") || "").trim();
+  const selectedAccount = String(form.get("account") || "").trim();
+  return {
+    merchant,
+    note,
+    category: selectedCategory || guessCategory({ merchant, note, category: "" }, type),
+    account: selectedAccount || guessAccount({ merchant, note, fallback: fallbackAccount }),
+  };
+}
+
 function applyQuickGuess(form, type, fallbackAccount) {
   const merchant = form.elements.merchant?.value || "";
   const note = form.elements.note?.value || "";
@@ -308,17 +321,17 @@ function App() {
     const amount = Number(form.get("amount"));
     if (!amount || amount <= 0) return;
     const isTrip = form.get("isTrip") === "on";
-    const account = form.get("account");
+    const entry = resolveEntryFields({ form, type: entryType, fallbackAccount: state.lastAccount });
     const attachments = await buildAttachments(event.currentTarget.elements.attachments.files || []);
     const transaction = {
       id: crypto.randomUUID(),
       amount,
       type: entryType,
-      category: form.get("category"),
-      account,
+      category: entry.category,
+      account: entry.account,
       occurredAt: form.get("occurredAt") || today(),
-      merchant: String(form.get("merchant") || "").trim(),
-      note: String(form.get("note") || "").trim(),
+      merchant: entry.merchant,
+      note: entry.note,
       isTrip,
       tripId: isTrip ? form.get("tripId") || "" : "",
       reimbursementStatus: isTrip ? form.get("reimbursementStatus") || "pending" : "none",
@@ -331,7 +344,7 @@ function App() {
       ...state,
       attachments: [...(state.attachments || []), ...attachments],
       transactions: [...state.transactions, transaction],
-      lastAccount: account,
+      lastAccount: entry.account,
     });
     event.currentTarget.reset();
     setEntryType("expense");
@@ -769,11 +782,17 @@ function App() {
             <div className="form-grid">
               <label>
                 分类
-                <select name="category">{categories.map((category) => <option key={category}>{category}</option>)}</select>
+                <select name="category" defaultValue="">
+                  <option value="">自动识别</option>
+                  {categories.map((category) => <option key={category}>{category}</option>)}
+                </select>
               </label>
               <label>
                 账户
-                <select name="account" defaultValue={state.lastAccount}>{state.accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select>
+                <select name="account" defaultValue="">
+                  <option value="">自动识别</option>
+                  {state.accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}
+                </select>
               </label>
               <label>
                 日期
@@ -784,10 +803,12 @@ function App() {
                 <input
                   name="merchant"
                   placeholder="例如：滴滴、美团、酒店"
+                  required
                   onBlur={(event) => applyQuickGuess(event.currentTarget.form, entryType, state.lastAccount)}
                 />
               </label>
             </div>
+            <p className="quick-entry-hint">只填金额和商户也可以保存；分类和账户会自动识别，需要时再手动改。</p>
             <label>
               备注
               <textarea
