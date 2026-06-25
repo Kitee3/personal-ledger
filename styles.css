@@ -771,3 +771,13 @@ th.num {
 .rule-table td:nth-child(3) input {
   min-width: 190px;
 }
+.rule-sections {
+  display: grid;
+  gap: 18px;
+}
+
+.rule-table textarea {
+  min-width: 260px;
+  min-height: 58px;
+  padding: 7px 9px;
+}

@@ -7,6 +7,24 @@ const storageKey = "personal-ledger-v1";
 const firebaseConfigKey = "personal-ledger-firebase-config";
 const autoCloudSyncKey = "personal-ledger-auto-cloud-sync";
 
+const defaultImportCategoryRules = [
+  { id: "income-reimburse", label: "报销/退款", type: "income", keywords: "报销,退费,退款", category: "报销到账" },
+  { id: "income-salary", label: "工资", type: "income", keywords: "工资,薪资,薪酬", category: "工资" },
+  { id: "income-bonus", label: "奖金", type: "income", keywords: "奖金", category: "奖金" },
+  { id: "income-subsidy", label: "补贴", type: "income", keywords: "补贴,津贴", category: "补贴" },
+  { id: "income-side", label: "副业", type: "income", keywords: "副业,兼职,稿费", category: "副业" },
+  { id: "expense-food", label: "餐饮", type: "expense", keywords: "餐饮,美食,外卖,饭,餐,咖啡,奶茶,食品,早餐,午餐,晚餐", category: "餐饮" },
+  { id: "expense-transport", label: "交通", type: "expense", keywords: "交通,出行,滴滴,打车,地铁,公交,乘车,火车,机票,高铁,taxi,车票", category: "交通" },
+  { id: "expense-shopping", label: "购物", type: "expense", keywords: "购物,淘宝,天猫,京东,拼多多,超市,便利店,商店,零售", category: "购物" },
+  { id: "expense-housing", label: "住房", type: "expense", keywords: "房租,物业,水费,电费,燃气,住房", category: "住房" },
+  { id: "expense-telecom", label: "通讯", type: "expense", keywords: "通讯,通信,话费,流量,充值缴费,中国移动,中国联通,中国电信,中国广电", category: "通讯" },
+  { id: "expense-medical", label: "医疗", type: "expense", keywords: "医疗,医院,药,挂号,门诊", category: "医疗" },
+  { id: "expense-entertainment", label: "娱乐", type: "expense", keywords: "娱乐,电影,游戏,会员,音乐,视频", category: "娱乐" },
+  { id: "expense-study", label: "学习", type: "expense", keywords: "学习,课程,书,教育,培训", category: "学习" },
+  { id: "expense-relationship", label: "人情", type: "expense", keywords: "人情,红包,转账,亲属卡,家人,朋友", category: "人情" },
+  { id: "expense-trip", label: "差旅", type: "expense", keywords: "差旅,酒店,宾馆,航旅,携程,飞猪,机场,车站", category: "差旅" },
+];
+
 const defaultState = {
   accounts: [
     { id: "wechat", name: "微信", type: "wallet", initialBalance: 0 },
@@ -25,6 +43,7 @@ const defaultState = {
     categories: {},
   },
   importRules: [],
+  importCategoryRules: defaultImportCategoryRules,
   lastAccount: "wechat",
 };
 
@@ -237,33 +256,25 @@ function normalizeBillStatus(status, source) {
   return "valid";
 }
 
-function mapExternalCategory(category, text, type) {
-  const sourceCategory = cleanBillText(category);
-  const joined = `${sourceCategory} ${text || ""}`.toLowerCase();
-  if (type === "income") {
-    if (/报销|退费|退款/.test(joined)) return "报销到账";
-    if (/工资|薪资|薪酬/.test(joined)) return "工资";
-    if (/奖金/.test(joined)) return "奖金";
-    if (/补贴|津贴/.test(joined)) return "补贴";
-    if (/副业|兼职|稿费/.test(joined)) return "副业";
-    return "其他";
-  }
-  if (/餐饮|美食|外卖|饭|餐|咖啡|奶茶|食品|早餐|午餐|晚餐/.test(joined)) return "餐饮";
-  if (/交通|出行|滴滴|打车|地铁|公交|乘车|火车|机票|高铁|taxi|车票/.test(joined)) return "交通";
-  if (/购物|淘宝|天猫|京东|拼多多|超市|便利店|商店|零售/.test(joined)) return "购物";
-  if (/房租|物业|水费|电费|燃气|住房/.test(joined)) return "住房";
-  if (/通讯|通信|话费|流量|充值缴费|中国移动|中国联通|中国电信|中国广电/.test(joined)) return "通讯";
-  if (/医疗|医院|药|挂号|门诊/.test(joined)) return "医疗";
-  if (/娱乐|电影|游戏|会员|音乐|视频/.test(joined)) return "娱乐";
-  if (/学习|课程|书|教育|培训/.test(joined)) return "学习";
-  if (/人情|红包|转账|亲属卡|家人|朋友/.test(joined)) return "人情";
-  if (/差旅|酒店|宾馆|航旅|携程|飞猪|机场|车站/.test(joined)) return "差旅";
-  return "其他";
+function splitKeywords(value) {
+  return cleanBillText(value)
+    .split(/[，,、|\s]+/)
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean);
 }
 
-function guessCategory({ merchant, note, category }, type) {
+function mapExternalCategory(category, text, type, rules = defaultImportCategoryRules) {
+  const sourceCategory = cleanBillText(category);
+  const joined = `${sourceCategory} ${text || ""}`.toLowerCase();
+  const matchedRule = (rules || [])
+    .filter((rule) => (rule.type || "expense") === type)
+    .find((rule) => splitKeywords(rule.keywords).some((keyword) => joined.includes(keyword)));
+  return matchedRule?.category || "其他";
+}
+
+function guessCategory({ merchant, note, category, rules }, type) {
   const text = `${merchant || ""} ${note || ""}`.toLowerCase();
-  const mapped = mapExternalCategory(category, text, type);
+  const mapped = mapExternalCategory(category, text, type, rules);
   if (mapped !== "其他" || !category) return mapped;
   if (type === "income") return category || "其他";
   return category || "其他";
@@ -670,7 +681,7 @@ function App() {
     const statusText = cleanBillText(getFirstValue(row, ["交易状态", "当前状态", "状态"]));
     const sourceOrderId = cleanBillText(getFirstValue(row, ["交易订单号", "交易单号", "商家订单号", "商户单号"]));
     const status = normalizeBillStatus(statusText, source);
-    const category = guessCategory({ merchant, note, category: externalCategory }, type);
+    const category = guessCategory({ merchant, note, category: externalCategory, rules: state.importCategoryRules || defaultImportCategoryRules }, type);
     const account = source === "alipay"
       ? guessAccount({ merchant: paymentMethod, note: `${merchant} ${note}`, fallback: "alipay" })
       : source === "wechat"
@@ -774,6 +785,51 @@ function App() {
     commitState({
       ...state,
       importRules: (state.importRules || []).filter((_, ruleIndex) => ruleIndex !== index),
+    });
+  }
+
+  function updateCategoryRule(index, field, value) {
+    commitState({
+      ...state,
+      importCategoryRules: (state.importCategoryRules || defaultImportCategoryRules).map((rule, ruleIndex) => {
+        if (ruleIndex !== index) return rule;
+        const next = { ...rule, [field]: value };
+        if (field === "type") {
+          const nextCategories = value === "income" ? state.incomeCategories : state.expenseCategories;
+          if (!nextCategories.includes(next.category)) next.category = nextCategories[0] || "其他";
+        }
+        return next;
+      }),
+    });
+  }
+
+  function addCategoryRule() {
+    commitState({
+      ...state,
+      importCategoryRules: [
+        ...(state.importCategoryRules || defaultImportCategoryRules),
+        {
+          id: crypto.randomUUID(),
+          label: "新规则",
+          type: "expense",
+          keywords: "",
+          category: "其他",
+        },
+      ],
+    });
+  }
+
+  function deleteCategoryRule(index) {
+    commitState({
+      ...state,
+      importCategoryRules: (state.importCategoryRules || defaultImportCategoryRules).filter((_, ruleIndex) => ruleIndex !== index),
+    });
+  }
+
+  function resetCategoryRules() {
+    commitState({
+      ...state,
+      importCategoryRules: structuredClone(defaultImportCategoryRules),
     });
   }
 
@@ -1217,11 +1273,16 @@ function App() {
         {activeView === "rules" && (
           <ImportRuleManager
             rules={state.importRules || []}
+            categoryRules={state.importCategoryRules || defaultImportCategoryRules}
             accounts={state.accounts}
             expenseCategories={state.expenseCategories}
             incomeCategories={state.incomeCategories}
             onChange={updateImportRule}
             onDelete={deleteImportRule}
+            onCategoryRuleChange={updateCategoryRule}
+            onCategoryRuleAdd={addCategoryRule}
+            onCategoryRuleDelete={deleteCategoryRule}
+            onCategoryRuleReset={resetCategoryRules}
           />
         )}
 
@@ -1477,32 +1538,56 @@ function MonthChart({ transactions }) {
   return <div className="month-chart">{months.map((month) => <div className="month-bar" key={month.key}><div className="month-stack"><div className="income-bar" style={{ height: `${Math.max((month.income / max) * 170, month.income ? 4 : 0)}px` }}></div><div className="expense-bar" style={{ height: `${Math.max((month.expense / max) * 170, month.expense ? 4 : 0)}px` }}></div></div><div className="month-label">{month.label}</div></div>)}</div>;
 }
 
-function ImportRuleManager({ rules, accounts, expenseCategories, incomeCategories, onChange, onDelete }) {
+function ImportRuleManager({ rules, categoryRules, accounts, expenseCategories, incomeCategories, onChange, onDelete, onCategoryRuleChange, onCategoryRuleAdd, onCategoryRuleDelete, onCategoryRuleReset }) {
   return (
-    <section className="panel">
-      <div className="panel-head">
-        <div>
-          <h3>导入映射规则</h3>
-          <p className="muted">从导入预览勾选“记住”后会生成规则。这里修改后，下次导入同来源、同商户/说明会自动套用。</p>
+    <div className="rule-sections">
+      <section className="panel">
+        <div className="panel-head">
+          <div>
+            <h3>自动分类规则</h3>
+            <p className="muted">这里就是初始映射。导入时会先按这些关键词把支付宝/微信账单归到项目分类。</p>
+          </div>
+          <div className="row-actions"><button className="ghost-btn" type="button" onClick={onCategoryRuleAdd}>新增规则</button><button className="text-btn" type="button" onClick={onCategoryRuleReset}>恢复默认</button></div>
         </div>
-        <span className="status-pill">{rules.length} 条</span>
-      </div>
-      <div className="table-wrap rule-table"><table><thead><tr><th>来源</th><th>匹配文本</th><th>显示名称</th><th>类型</th><th>分类</th><th>账户</th><th>更新时间</th><th></th></tr></thead><tbody>
-        {rules.length ? rules.map((rule, index) => {
-          const categories = rule.type === "income" ? incomeCategories : expenseCategories;
-          return <tr key={`${rule.key}-${index}`}>
-            <td><select value={rule.source || "import"} onChange={(event) => onChange(index, "source", event.target.value)}><option value="alipay">支付宝</option><option value="wechat">微信</option><option value="import">通用</option></select></td>
-            <td><input value={rule.matchText || ""} placeholder="商户或说明关键词" onChange={(event) => onChange(index, "matchText", event.target.value)} /></td>
-            <td><input value={rule.label || ""} placeholder="显示名称" onChange={(event) => onChange(index, "label", event.target.value)} /></td>
-            <td><select value={rule.type || "expense"} onChange={(event) => onChange(index, "type", event.target.value)}><option value="expense">支出</option><option value="income">收入</option></select></td>
-            <td><select value={rule.category || "其他"} onChange={(event) => onChange(index, "category", event.target.value)}>{categories.map((category) => <option key={category} value={category}>{category}</option>)}</select></td>
-            <td><select value={rule.account || "wechat"} onChange={(event) => onChange(index, "account", event.target.value)}>{accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></td>
-            <td className="transaction-meta">{rule.updatedAt ? rule.updatedAt.slice(0, 10) : "-"}</td>
-            <td><button className="delete-btn" type="button" onClick={() => onDelete(index)}>删除</button></td>
-          </tr>;
-        }) : <tr><td colSpan="8">还没有保存的映射。导入预览时勾选“记住”，确认导入后会出现在这里。</td></tr>}
-      </tbody></table></div>
-    </section>
+        <div className="table-wrap rule-table"><table><thead><tr><th>名称</th><th>类型</th><th>关键词</th><th>映射分类</th><th></th></tr></thead><tbody>
+          {categoryRules.length ? categoryRules.map((rule, index) => {
+            const categories = rule.type === "income" ? incomeCategories : expenseCategories;
+            return <tr key={`${rule.id || rule.label}-${index}`}>
+              <td><input value={rule.label || ""} placeholder="规则名称" onChange={(event) => onCategoryRuleChange(index, "label", event.target.value)} /></td>
+              <td><select value={rule.type || "expense"} onChange={(event) => onCategoryRuleChange(index, "type", event.target.value)}><option value="expense">支出</option><option value="income">收入</option></select></td>
+              <td><textarea rows="2" value={rule.keywords || ""} placeholder="关键词用逗号分隔" onChange={(event) => onCategoryRuleChange(index, "keywords", event.target.value)} /></td>
+              <td><select value={rule.category || "其他"} onChange={(event) => onCategoryRuleChange(index, "category", event.target.value)}>{categories.map((category) => <option key={category} value={category}>{category}</option>)}</select></td>
+              <td><button className="delete-btn" type="button" onClick={() => onCategoryRuleDelete(index)}>删除</button></td>
+            </tr>;
+          }) : <tr><td colSpan="5">没有自动分类规则。可以新增规则，或恢复默认。</td></tr>}
+        </tbody></table></div>
+      </section>
+
+      <section className="panel">
+        <div className="panel-head">
+          <div>
+            <h3>导入映射规则</h3>
+            <p className="muted">从导入预览勾选“记住”后会生成规则。这里修改后，下次导入同来源、同商户/说明会自动套用。</p>
+          </div>
+          <span className="status-pill">{rules.length} 条</span>
+        </div>
+        <div className="table-wrap rule-table"><table><thead><tr><th>来源</th><th>匹配文本</th><th>显示名称</th><th>类型</th><th>分类</th><th>账户</th><th>更新时间</th><th></th></tr></thead><tbody>
+          {rules.length ? rules.map((rule, index) => {
+            const categories = rule.type === "income" ? incomeCategories : expenseCategories;
+            return <tr key={`${rule.key}-${index}`}>
+              <td><select value={rule.source || "import"} onChange={(event) => onChange(index, "source", event.target.value)}><option value="alipay">支付宝</option><option value="wechat">微信</option><option value="import">通用</option></select></td>
+              <td><input value={rule.matchText || ""} placeholder="商户或说明关键词" onChange={(event) => onChange(index, "matchText", event.target.value)} /></td>
+              <td><input value={rule.label || ""} placeholder="显示名称" onChange={(event) => onChange(index, "label", event.target.value)} /></td>
+              <td><select value={rule.type || "expense"} onChange={(event) => onChange(index, "type", event.target.value)}><option value="expense">支出</option><option value="income">收入</option></select></td>
+              <td><select value={rule.category || "其他"} onChange={(event) => onChange(index, "category", event.target.value)}>{categories.map((category) => <option key={category} value={category}>{category}</option>)}</select></td>
+              <td><select value={rule.account || "wechat"} onChange={(event) => onChange(index, "account", event.target.value)}>{accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></td>
+              <td className="transaction-meta">{rule.updatedAt ? rule.updatedAt.slice(0, 10) : "-"}</td>
+              <td><button className="delete-btn" type="button" onClick={() => onDelete(index)}>删除</button></td>
+            </tr>;
+          }) : <tr><td colSpan="8">还没有保存的映射。导入预览时勾选“记住”，确认导入后会出现在这里。</td></tr>}
+        </tbody></table></div>
+      </section>
+    </div>
   );
 }
 
