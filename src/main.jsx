@@ -35,6 +35,7 @@ const views = [
   ["trips", "差旅"],
   ["budget", "预算"],
   ["import", "导入"],
+  ["rules", "映射"],
   ["settings", "设置"],
 ];
 
@@ -747,6 +748,35 @@ function App() {
     );
   }
 
+  function updateImportRule(index, field, value) {
+    const now = new Date().toISOString();
+    commitState({
+      ...state,
+      importRules: (state.importRules || []).map((rule, ruleIndex) => {
+        if (ruleIndex !== index) return rule;
+        const next = { ...rule, [field]: value, updatedAt: now };
+        if (field === "type") {
+          const nextCategories = value === "income" ? state.incomeCategories : state.expenseCategories;
+          if (!nextCategories.includes(next.category)) next.category = nextCategories[0] || "其他";
+        }
+        const source = next.source || "import";
+        const matchText = normalizeRuleText(next.matchText || next.label);
+        return {
+          ...next,
+          matchText,
+          key: matchText ? `${source}|${matchText}` : rule.key,
+        };
+      }),
+    });
+  }
+
+  function deleteImportRule(index) {
+    commitState({
+      ...state,
+      importRules: (state.importRules || []).filter((_, ruleIndex) => ruleIndex !== index),
+    });
+  }
+
   function confirmImportRows() {
     const rows = pendingImportRows.filter((row) => row.status === "ready");
     const now = new Date().toISOString();
@@ -1184,6 +1214,17 @@ function App() {
           </section>
         )}
 
+        {activeView === "rules" && (
+          <ImportRuleManager
+            rules={state.importRules || []}
+            accounts={state.accounts}
+            expenseCategories={state.expenseCategories}
+            incomeCategories={state.incomeCategories}
+            onChange={updateImportRule}
+            onDelete={deleteImportRule}
+          />
+        )}
+
         {activeView === "settings" && (
           <div className="two-column">
             <section className="panel">
@@ -1434,6 +1475,35 @@ function MonthChart({ transactions }) {
   });
   const max = Math.max(...months.flatMap((month) => [month.income, month.expense]), 1);
   return <div className="month-chart">{months.map((month) => <div className="month-bar" key={month.key}><div className="month-stack"><div className="income-bar" style={{ height: `${Math.max((month.income / max) * 170, month.income ? 4 : 0)}px` }}></div><div className="expense-bar" style={{ height: `${Math.max((month.expense / max) * 170, month.expense ? 4 : 0)}px` }}></div></div><div className="month-label">{month.label}</div></div>)}</div>;
+}
+
+function ImportRuleManager({ rules, accounts, expenseCategories, incomeCategories, onChange, onDelete }) {
+  return (
+    <section className="panel">
+      <div className="panel-head">
+        <div>
+          <h3>导入映射规则</h3>
+          <p className="muted">从导入预览勾选“记住”后会生成规则。这里修改后，下次导入同来源、同商户/说明会自动套用。</p>
+        </div>
+        <span className="status-pill">{rules.length} 条</span>
+      </div>
+      <div className="table-wrap rule-table"><table><thead><tr><th>来源</th><th>匹配文本</th><th>显示名称</th><th>类型</th><th>分类</th><th>账户</th><th>更新时间</th><th></th></tr></thead><tbody>
+        {rules.length ? rules.map((rule, index) => {
+          const categories = rule.type === "income" ? incomeCategories : expenseCategories;
+          return <tr key={`${rule.key}-${index}`}>
+            <td><select value={rule.source || "import"} onChange={(event) => onChange(index, "source", event.target.value)}><option value="alipay">支付宝</option><option value="wechat">微信</option><option value="import">通用</option></select></td>
+            <td><input value={rule.matchText || ""} placeholder="商户或说明关键词" onChange={(event) => onChange(index, "matchText", event.target.value)} /></td>
+            <td><input value={rule.label || ""} placeholder="显示名称" onChange={(event) => onChange(index, "label", event.target.value)} /></td>
+            <td><select value={rule.type || "expense"} onChange={(event) => onChange(index, "type", event.target.value)}><option value="expense">支出</option><option value="income">收入</option></select></td>
+            <td><select value={rule.category || "其他"} onChange={(event) => onChange(index, "category", event.target.value)}>{categories.map((category) => <option key={category} value={category}>{category}</option>)}</select></td>
+            <td><select value={rule.account || "wechat"} onChange={(event) => onChange(index, "account", event.target.value)}>{accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></td>
+            <td className="transaction-meta">{rule.updatedAt ? rule.updatedAt.slice(0, 10) : "-"}</td>
+            <td><button className="delete-btn" type="button" onClick={() => onDelete(index)}>删除</button></td>
+          </tr>;
+        }) : <tr><td colSpan="8">还没有保存的映射。导入预览时勾选“记住”，确认导入后会出现在这里。</td></tr>}
+      </tbody></table></div>
+    </section>
+  );
 }
 
 function ImportPreview({ rows, accounts, expenseCategories, incomeCategories, onChange, getAccountName, getTripName }) {

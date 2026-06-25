@@ -757,3 +757,17 @@ th.num {
   width: 16px;
   min-height: 16px;
 }
+.rule-table table {
+  min-width: 1080px;
+}
+
+.rule-table input,
+.rule-table select {
+  min-height: 36px;
+  padding: 7px 9px;
+}
+
+.rule-table td:nth-child(2) input,
+.rule-table td:nth-child(3) input {
+  min-width: 190px;
+}
