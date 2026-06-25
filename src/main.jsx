@@ -24,6 +24,7 @@ const defaultState = {
     total: 0,
     categories: {},
   },
+  importRules: [],
   lastAccount: "wechat",
 };
 
@@ -114,6 +115,17 @@ async function buildAttachments(files) {
   );
 }
 
+function isBillHeader(cells) {
+  const headers = cells.map((cell) => String(cell || "").trim()).filter(Boolean);
+  const joined = headers.join(" ");
+  return (
+    headers.length >= 3 &&
+    /日期|时间/.test(joined) &&
+    /金额/.test(joined) &&
+    /类型|收\/支|收支|交易对方|商户|商品/.test(joined)
+  );
+}
+
 function parseCsv(text) {
   const lines = text.replace(/^\ufeff/, "").split(/\r?\n/).filter(Boolean);
   if (lines.length < 2) return [];
@@ -139,15 +151,26 @@ function parseCsv(text) {
     cells.push(current);
     return cells.map((cell) => cell.trim());
   };
-  const headerIndex = Math.max(
-    0,
-    lines.findIndex((line) => /日期|时间|金额|交易/.test(parseLine(line).join("")))
-  );
+  const headerIndex = lines.findIndex((line) => isBillHeader(parseLine(line)));
+  if (headerIndex < 0) return [];
   const headers = parseLine(lines[headerIndex]);
   return lines.slice(headerIndex + 1).map((line) => {
     const cells = parseLine(line);
     return Object.fromEntries(headers.map((header, index) => [header, cells[index] || ""]));
   });
+}
+
+async function decodeTextFile(file) {
+  const buffer = await file.arrayBuffer();
+  for (const encoding of ["utf-8", "gb18030", "gbk"]) {
+    try {
+      const text = new TextDecoder(encoding, { fatal: encoding === "utf-8" }).decode(buffer);
+      if (/日期|时间|金额|交易|收\/支/.test(text)) return text;
+    } catch {
+      // Try the next likely export encoding.
+    }
+  }
+  return new TextDecoder("utf-8").decode(buffer);
 }
 
 async function parseBillFile(file) {
@@ -162,14 +185,14 @@ async function parseBillFile(file) {
     const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "", raw: false });
     const headerIndex = Math.max(
       0,
-      rows.findIndex((row) => /日期|时间|金额|交易/.test(row.join("")))
+      rows.findIndex((row) => isBillHeader(row))
     );
     const headers = rows[headerIndex].map((cell) => String(cell).trim());
     return rows.slice(headerIndex + 1).map((row) =>
       Object.fromEntries(headers.map((header, index) => [header, String(row[index] ?? "").trim()]))
     );
   }
-  return parseCsv(await file.text());
+  return parseCsv(await decodeTextFile(file));
 }
 
 function getFirstValue(row, keys) {
@@ -185,22 +208,124 @@ function parseAmount(value) {
   return match ? Math.abs(Number(match[0])) : 0;
 }
 
+function cleanBillText(value) {
+  const text = String(value || "").replace(/\t/g, "").trim();
+  return text === "/" ? "" : text;
+}
+
+function detectBillSource(row) {
+  const keys = Object.keys(row).join(" ");
+  if (/金额\(元\)|支付方式|当前状态|交易单号|商户单号/.test(keys)) return "wechat";
+  if (/商品说明|收\/付款方式|交易订单号|商家订单号/.test(keys)) return "alipay";
+  return "import";
+}
+
+function normalizeImportedType(marker, amountRaw) {
+  if (/收入|收款|入账|\+|转入/.test(marker)) return "income";
+  if (/支出|付款|消费|-|转出/.test(marker)) return "expense";
+  if (String(amountRaw || "").trim().startsWith("-")) return "expense";
+  return "expense";
+}
+
+function normalizeBillStatus(status, source) {
+  const text = cleanBillText(status);
+  if (!text) return "valid";
+  if (/退款|关闭|失败|撤销|已全额退款|交易关闭|支付失败|退还/.test(text)) return "skip";
+  if (source === "alipay" && /交易成功|支付成功/.test(text)) return "valid";
+  if (source === "wechat" && /支付成功|已收钱|已存入零钱/.test(text)) return "valid";
+  return "valid";
+}
+
+function mapExternalCategory(category, text, type) {
+  const sourceCategory = cleanBillText(category);
+  const joined = `${sourceCategory} ${text || ""}`.toLowerCase();
+  if (type === "income") {
+    if (/报销|退费|退款/.test(joined)) return "报销到账";
+    if (/工资|薪资|薪酬/.test(joined)) return "工资";
+    if (/奖金/.test(joined)) return "奖金";
+    if (/补贴|津贴/.test(joined)) return "补贴";
+    if (/副业|兼职|稿费/.test(joined)) return "副业";
+    return "其他";
+  }
+  if (/餐饮|美食|外卖|饭|餐|咖啡|奶茶|食品|早餐|午餐|晚餐/.test(joined)) return "餐饮";
+  if (/交通|出行|滴滴|打车|地铁|公交|乘车|火车|机票|高铁|taxi|车票/.test(joined)) return "交通";
+  if (/购物|淘宝|天猫|京东|拼多多|超市|便利店|商店|零售/.test(joined)) return "购物";
+  if (/房租|物业|水费|电费|燃气|住房/.test(joined)) return "住房";
+  if (/通讯|通信|话费|流量|充值缴费|中国移动|中国联通|中国电信|中国广电/.test(joined)) return "通讯";
+  if (/医疗|医院|药|挂号|门诊/.test(joined)) return "医疗";
+  if (/娱乐|电影|游戏|会员|音乐|视频/.test(joined)) return "娱乐";
+  if (/学习|课程|书|教育|培训/.test(joined)) return "学习";
+  if (/人情|红包|转账|亲属卡|家人|朋友/.test(joined)) return "人情";
+  if (/差旅|酒店|宾馆|航旅|携程|飞猪|机场|车站/.test(joined)) return "差旅";
+  return "其他";
+}
+
 function guessCategory({ merchant, note, category }, type) {
   const text = `${merchant || ""} ${note || ""}`.toLowerCase();
+  const mapped = mapExternalCategory(category, text, type);
+  if (mapped !== "其他" || !category) return mapped;
   if (type === "income") return category || "其他";
-  if (/酒店|宾馆|航旅|携程|飞猪/.test(text)) return "差旅";
-  if (/滴滴|打车|地铁|公交|火车|机票|高铁|taxi/.test(text)) return "交通";
-  if (/美团|饿了么|餐|咖啡|饭|奶茶/.test(text)) return "餐饮";
-  if (/京东|淘宝|天猫|拼多多|超市/.test(text)) return "购物";
   return category || "其他";
 }
 
 function guessAccount({ merchant, note, fallback }) {
   const text = `${merchant || ""} ${note || ""}`.toLowerCase();
-  if (/支付宝|alipay|花呗|余额宝/.test(text)) return "alipay";
+  if (/信用卡|visa|mastercard|白条|分期|花呗/.test(text)) return "credit";
+  if (/支付宝|alipay|余额宝/.test(text)) return "alipay";
   if (/微信|wechat|零钱/.test(text)) return "wechat";
-  if (/信用卡|visa|mastercard|白条|分期/.test(text)) return "credit";
+  if (/银行卡|储蓄卡|借记卡|建设银行|工商银行|农业银行|中国银行|交通银行|邮储|招商|中信|浦发|民生|兴业|广发|平安/.test(text)) return "bank";
   return fallback || "wechat";
+}
+
+function normalizeRuleText(value) {
+  return cleanBillText(value).toLowerCase();
+}
+
+function getImportRuleKey({ source, merchant, note }) {
+  const target = normalizeRuleText(merchant) || normalizeRuleText(note);
+  return target ? `${source || "import"}|${target}` : "";
+}
+
+function applyImportRule(row, rules = []) {
+  const key = getImportRuleKey(row);
+  if (!key) return row;
+  const rule = rules.find((item) => item.key === key);
+  if (!rule) return row;
+  return {
+    ...row,
+    type: rule.type || row.type,
+    category: rule.category || row.category,
+    account: rule.account || row.account,
+    mappedByRule: true,
+  };
+}
+
+function buildImportRule(row) {
+  const key = getImportRuleKey(row);
+  if (!key) return null;
+  return {
+    key,
+    source: row.source || "import",
+    matchText: normalizeRuleText(row.merchant) || normalizeRuleText(row.note),
+    label: row.merchant || row.note || "未命名规则",
+    type: row.type,
+    category: row.category,
+    account: row.account,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function upsertImportRules(existingRules = [], rows = []) {
+  const next = [...existingRules];
+  rows.forEach((row) => {
+    if (!row.rememberMapping) return;
+    const rule = buildImportRule(row);
+    if (!rule) return;
+    const index = next.findIndex((item) => item.key === rule.key);
+    if (index >= 0) next[index] = { ...next[index], ...rule };
+    else next.push(rule);
+  });
+  return next;
 }
 
 function resolveEntryFields({ form, type, fallbackAccount }) {
@@ -244,6 +369,8 @@ function App() {
   const [entryType, setEntryType] = useState("expense");
   const [filters, setFilters] = useState({ search: "", type: "all", trip: "all" });
   const [pendingImportRows, setPendingImportRows] = useState([]);
+  const [editingTransactionId, setEditingTransactionId] = useState("");
+  const [transactionDraft, setTransactionDraft] = useState(null);
   const [importLog, setImportLog] = useState("等待导入。");
   const [importTripId, setImportTripId] = useState("");
   const [importTripMode, setImportTripMode] = useState("strong");
@@ -377,6 +504,67 @@ function App() {
     });
   }
 
+  function startEditTransaction(transaction) {
+    setEditingTransactionId(transaction.id);
+    setTransactionDraft({
+      occurredAt: transaction.occurredAt || today(),
+      type: transaction.type || "expense",
+      category: transaction.category || "其他",
+      merchant: transaction.merchant || "",
+      note: transaction.note || "",
+      account: transaction.account || state.lastAccount || "wechat",
+      amount: String(transaction.amount || ""),
+      reimbursementStatus: transaction.reimbursementStatus || "none",
+    });
+  }
+
+  function updateTransactionDraft(field, value) {
+    setTransactionDraft((draft) => {
+      if (!draft) return draft;
+      const next = { ...draft, [field]: value };
+      if (field === "type") {
+        const nextCategories = value === "income" ? state.incomeCategories : state.expenseCategories;
+        if (!nextCategories.includes(next.category)) next.category = nextCategories[0] || "其他";
+        if (value === "income") next.reimbursementStatus = "none";
+      }
+      return next;
+    });
+  }
+
+  function cancelEditTransaction() {
+    setEditingTransactionId("");
+    setTransactionDraft(null);
+  }
+
+  function saveTransactionEdit(id) {
+    if (!transactionDraft) return;
+    const amount = Number(transactionDraft.amount);
+    if (!amount || amount <= 0) return;
+    const now = new Date().toISOString();
+    commitState({
+      ...state,
+      transactions: state.transactions.map((transaction) =>
+        transaction.id === id
+          ? {
+              ...transaction,
+              amount,
+              type: transactionDraft.type,
+              category: transactionDraft.category,
+              account: transactionDraft.account,
+              occurredAt: transactionDraft.occurredAt || today(),
+              merchant: transactionDraft.merchant.trim(),
+              note: transactionDraft.note.trim(),
+              reimbursementStatus: transactionDraft.type === "expense" ? transactionDraft.reimbursementStatus || "none" : "none",
+              isTrip: transactionDraft.type === "expense" && transactionDraft.reimbursementStatus !== "none" ? true : transaction.isTrip,
+              updatedAt: now,
+            }
+          : transaction
+      ),
+      lastAccount: transactionDraft.account,
+    });
+    cancelEditTransaction();
+  }
+
   function updateTripReimbursementStatus(tripId, reimbursementStatus) {
     const now = new Date().toISOString();
     commitState({
@@ -467,35 +655,51 @@ function App() {
   }
 
   function normalizeImportRow(row) {
+    const source = detectBillSource(row);
     const amountRaw = getFirstValue(row, ["金额", "金额(元)", "交易金额", "支出金额", "收入金额"]);
     const amount = parseAmount(amountRaw);
-    const marker = getFirstValue(row, ["类型", "收/支", "收支", "交易类型", "资金流向"]);
-    const type = /收入|收款|入账|\+|转入/.test(marker) ? "income" : "expense";
-    const occurredAt = getFirstValue(row, ["日期", "交易时间", "时间", "付款时间", "创建时间"]).slice(0, 10) || today();
-    const merchant = getFirstValue(row, ["商户", "交易对方", "对方", "收款方", "付款方", "商品", "商品说明"]);
-    const note = getFirstValue(row, ["备注", "说明", "交易分类", "交易类型", "商品", "商品说明"]);
-    const category = guessCategory({ merchant, note, category: getFirstValue(row, ["分类"]) }, type);
-    const account = /支付宝|花呗/.test(JSON.stringify(row))
-      ? "alipay"
-      : /微信|零钱/.test(JSON.stringify(row))
-        ? "wechat"
-        : state.lastAccount || "wechat";
-    const tripMatched = importTripId && shouldAttachToTrip({ merchant, note, category, type, mode: importTripMode });
-    const importKey = [occurredAt, type, amount.toFixed(2), merchant, note].join("|").toLowerCase();
-    return {
+    const marker = cleanBillText(getFirstValue(row, ["类型", "收/支", "收支", "交易类型", "资金流向"]));
+    const type = normalizeImportedType(marker, amountRaw);
+    const occurredAtRaw = cleanBillText(getFirstValue(row, ["日期", "交易时间", "时间", "付款时间", "创建时间"]));
+    const occurredAt = occurredAtRaw.slice(0, 10) || today();
+    const externalCategory = cleanBillText(getFirstValue(row, ["分类", "交易分类", "交易类型"]));
+    const merchant = cleanBillText(getFirstValue(row, ["商户", "交易对方", "对方", "收款方", "付款方"]));
+    const note = cleanBillText(getFirstValue(row, ["商品说明", "商品", "备注", "说明"]));
+    const paymentMethod = cleanBillText(getFirstValue(row, ["收/付款方式", "支付方式", "付款方式", "支付渠道", "账户"]));
+    const statusText = cleanBillText(getFirstValue(row, ["交易状态", "当前状态", "状态"]));
+    const sourceOrderId = cleanBillText(getFirstValue(row, ["交易订单号", "交易单号", "商家订单号", "商户单号"]));
+    const status = normalizeBillStatus(statusText, source);
+    const category = guessCategory({ merchant, note, category: externalCategory }, type);
+    const account = source === "alipay"
+      ? guessAccount({ merchant: paymentMethod, note: `${merchant} ${note}`, fallback: "alipay" })
+      : source === "wechat"
+        ? guessAccount({ merchant: paymentMethod, note: `${merchant} ${note}`, fallback: "wechat" })
+        : guessAccount({ merchant: paymentMethod || merchant, note, fallback: state.lastAccount || "wechat" });
+    const tripMatched = importTripId && shouldAttachToTrip({ merchant, note: `${externalCategory} ${note}`, category, type, mode: importTripMode });
+    const fallbackKey = [occurredAt, type, amount.toFixed(2), merchant, note].join("|").toLowerCase();
+    const importKey = sourceOrderId ? `${source}:${sourceOrderId}`.toLowerCase() : fallbackKey;
+    const baseRow = {
       amount,
       type,
       category,
       account,
       occurredAt,
-      merchant,
+      merchant: merchant || note,
       note,
       importKey,
-      source: "import",
+      source,
+      sourceOrderId,
+      paymentMethod,
+      externalCategory,
+      occurredAtTime: occurredAtRaw,
+      raw: row,
+      skipReason: status === "skip" ? statusText || "非有效交易" : "",
       isTrip: Boolean(tripMatched) || category === "差旅",
       tripId: tripMatched ? importTripId : "",
       reimbursementStatus: tripMatched || category === "差旅" ? "pending" : "none",
+      rememberMapping: false,
     };
+    return applyImportRule(baseRow, state.importRules || []);
   }
 
   function isDuplicateImport(row) {
@@ -518,17 +722,38 @@ function App() {
     const rows = (await parseBillFile(file)).map(normalizeImportRow);
     const nextRows = rows.map((row) => ({
       ...row,
-      status: row.amount > 0 ? (isDuplicateImport(row) ? "duplicate" : "ready") : "invalid",
+      status: row.amount > 0 && !row.skipReason ? (isDuplicateImport(row) ? "duplicate" : "ready") : "invalid",
     }));
     setPendingImportRows(nextRows);
     setImportLog(`预览完成：${file.name}。确认无误后点击“确认导入”。`);
   }
 
+  function updatePendingImportRow(index, field, value) {
+    setPendingImportRows((rows) =>
+      rows.map((row, rowIndex) => {
+        if (rowIndex !== index) return row;
+        const next = { ...row, [field]: value };
+        if (field === "type") {
+          const nextCategories = value === "income" ? state.incomeCategories : state.expenseCategories;
+          if (!nextCategories.includes(next.category)) next.category = nextCategories[0] || "其他";
+          if (value === "income") next.reimbursementStatus = "none";
+        }
+        return {
+          ...next,
+          amount: field === "amount" ? parseAmount(value) : next.amount,
+          status: next.amount > 0 && !next.skipReason ? (isDuplicateImport(next) ? "duplicate" : "ready") : "invalid",
+        };
+      })
+    );
+  }
+
   function confirmImportRows() {
     const rows = pendingImportRows.filter((row) => row.status === "ready");
     const now = new Date().toISOString();
+    const nextImportRules = upsertImportRules(state.importRules || [], rows);
     commitState({
       ...state,
+      importRules: nextImportRules,
       transactions: [
         ...state.transactions,
         ...rows.map((row) => ({
@@ -546,13 +771,19 @@ function App() {
           attachmentIds: [],
           importKey: row.importKey,
           source: row.source,
+          sourceOrderId: row.sourceOrderId,
+          paymentMethod: row.paymentMethod,
+          externalCategory: row.externalCategory,
+          occurredAtTime: row.occurredAtTime,
+          raw: row.raw,
           createdAt: now,
           updatedAt: now,
         })),
       ],
     });
     setPendingImportRows(pendingImportRows.map((row) => (row.status === "ready" ? { ...row, status: "duplicate" } : row)));
-    setImportLog(`导入完成：${rows.length} 条流水。重复记录已自动跳过。`);
+    const remembered = rows.filter((row) => row.rememberMapping).length;
+    setImportLog(`导入完成：${rows.length} 条流水。重复记录已自动跳过。${remembered ? ` 已记住 ${remembered} 条映射。` : ""}`);
   }
 
   function downloadTemplate() {
@@ -879,8 +1110,17 @@ function App() {
             <TransactionTable
               rows={filteredTransactions}
               attachments={state.attachments || []}
+              accounts={state.accounts}
+              expenseCategories={state.expenseCategories}
+              incomeCategories={state.incomeCategories}
+              editingId={editingTransactionId}
+              draft={transactionDraft}
               getAccountName={getAccountName}
               onDelete={deleteTransaction}
+              onEdit={startEditTransaction}
+              onDraftChange={updateTransactionDraft}
+              onSave={saveTransactionEdit}
+              onCancel={cancelEditTransaction}
               onStatusChange={updateReimbursementStatus}
             />
           </>
@@ -939,7 +1179,7 @@ function App() {
               <button className="ghost-btn" type="button" disabled={!pendingImportRows.some((row) => row.status === "ready")} onClick={confirmImportRows}>确认导入</button>
               <button className="ghost-btn" type="button" onClick={downloadTemplate}>下载模板</button>
             </div>
-            <ImportPreview rows={pendingImportRows} getAccountName={getAccountName} getTripName={getTripName} />
+            <ImportPreview rows={pendingImportRows} accounts={state.accounts} expenseCategories={state.expenseCategories} incomeCategories={state.incomeCategories} onChange={updatePendingImportRow} getAccountName={getAccountName} getTripName={getTripName} />
             <pre className="import-log">{importLog}</pre>
           </section>
         )}
@@ -1135,12 +1375,28 @@ function ReimbursementStatusSelect({ value, onChange }) {
   );
 }
 
-function TransactionTable({ rows, attachments, getAccountName, onDelete, onStatusChange }) {
+function TransactionTable({ rows, attachments, accounts, expenseCategories, incomeCategories, editingId, draft, getAccountName, onDelete, onEdit, onDraftChange, onSave, onCancel, onStatusChange }) {
   return (
     <div className="table-wrap"><table><thead><tr><th>日期</th><th>类型</th><th>分类</th><th>商户/备注</th><th>账户</th><th>报销</th><th>凭证</th><th className="num">金额</th><th></th></tr></thead><tbody>
       {rows.length ? rows.map((row) => {
         const files = getTransactionAttachments(row, attachments);
-        return <tr key={row.id}><td>{row.occurredAt}</td><td>{row.type === "income" ? "收入" : "支出"}</td><td>{row.category}</td><td>{row.merchant || row.note || "-"}</td><td>{getAccountName(row.account)}</td><td>{row.type === "expense" ? <ReimbursementStatusSelect value={row.reimbursementStatus} onChange={(status) => onStatusChange(row.id, status)} /> : "-"}</td><td><AttachmentLinks files={files} /></td><td className={`num ${row.type === "income" ? "money-income" : "money-expense"}`}>{row.type === "income" ? "+" : "-"}{money(row.amount)}</td><td><button className="delete-btn" type="button" onClick={() => onDelete(row.id)}>删除</button></td></tr>;
+        const editing = editingId === row.id && draft;
+        const currentType = editing ? draft.type : row.type;
+        const categoryOptions = currentType === "income" ? incomeCategories : expenseCategories;
+        if (editing) {
+          return <tr key={row.id} className="editing-row">
+            <td><input type="date" value={draft.occurredAt} onChange={(event) => onDraftChange("occurredAt", event.target.value)} /></td>
+            <td><select value={draft.type} onChange={(event) => onDraftChange("type", event.target.value)}><option value="expense">支出</option><option value="income">收入</option></select></td>
+            <td><select value={draft.category} onChange={(event) => onDraftChange("category", event.target.value)}>{categoryOptions.map((category) => <option key={category} value={category}>{category}</option>)}</select></td>
+            <td><div className="stacked-inputs"><input value={draft.merchant} placeholder="商户" onChange={(event) => onDraftChange("merchant", event.target.value)} /><input value={draft.note} placeholder="备注" onChange={(event) => onDraftChange("note", event.target.value)} /></div></td>
+            <td><select value={draft.account} onChange={(event) => onDraftChange("account", event.target.value)}>{accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></td>
+            <td>{draft.type === "expense" ? <ReimbursementStatusSelect value={draft.reimbursementStatus} onChange={(status) => onDraftChange("reimbursementStatus", status)} /> : "-"}</td>
+            <td><AttachmentLinks files={files} /></td>
+            <td className="num"><input className="amount-edit" type="number" min="0" step="0.01" value={draft.amount} onChange={(event) => onDraftChange("amount", event.target.value)} /></td>
+            <td><div className="row-actions"><button className="text-btn" type="button" onClick={() => onSave(row.id)}>保存</button><button className="delete-btn" type="button" onClick={onCancel}>取消</button></div></td>
+          </tr>;
+        }
+        return <tr key={row.id}><td>{row.occurredAt}</td><td>{row.type === "income" ? "收入" : "支出"}</td><td>{row.category}</td><td>{row.merchant || row.note || "-"}</td><td>{getAccountName(row.account)}</td><td>{row.type === "expense" ? <ReimbursementStatusSelect value={row.reimbursementStatus} onChange={(status) => onStatusChange(row.id, status)} /> : "-"}</td><td><AttachmentLinks files={files} /></td><td className={`num ${row.type === "income" ? "money-income" : "money-expense"}`}>{row.type === "income" ? "+" : "-"}{money(row.amount)}</td><td><div className="row-actions"><button className="text-btn" type="button" onClick={() => onEdit(row)}>编辑</button><button className="delete-btn" type="button" onClick={() => onDelete(row.id)}>删除</button></div></td></tr>;
       }) : <tr><td colSpan="9">没有匹配的流水。</td></tr>}
     </tbody></table></div>
   );
@@ -1180,14 +1436,27 @@ function MonthChart({ transactions }) {
   return <div className="month-chart">{months.map((month) => <div className="month-bar" key={month.key}><div className="month-stack"><div className="income-bar" style={{ height: `${Math.max((month.income / max) * 170, month.income ? 4 : 0)}px` }}></div><div className="expense-bar" style={{ height: `${Math.max((month.expense / max) * 170, month.expense ? 4 : 0)}px` }}></div></div><div className="month-label">{month.label}</div></div>)}</div>;
 }
 
-function ImportPreview({ rows, getAccountName, getTripName }) {
+function ImportPreview({ rows, accounts, expenseCategories, incomeCategories, onChange, getAccountName, getTripName }) {
   const ready = rows.filter((row) => row.status === "ready").length;
   const duplicate = rows.filter((row) => row.status === "duplicate").length;
   const invalid = rows.filter((row) => row.status === "invalid").length;
   return <>
-    <div className="import-summary">{rows.length ? `预览 ${rows.length} 条：可导入 ${ready} 条，重复 ${duplicate} 条，无效 ${invalid} 条。` : ""}</div>
-    <div className="table-wrap import-preview"><table><thead><tr><th>状态</th><th>日期</th><th>类型</th><th>分类</th><th>差旅</th><th>商户/说明</th><th>账户</th><th className="num">金额</th></tr></thead><tbody>
-      {rows.length ? rows.slice(0, 100).map((row, index) => <tr key={`${row.importKey}-${index}`}><td><span className={row.status === "ready" ? "status-pill" : "status-pill skip"}>{row.status === "ready" ? "可导入" : row.status === "duplicate" ? "重复" : "无效"}</span></td><td>{row.occurredAt || "-"}</td><td>{row.type === "income" ? "收入" : "支出"}</td><td>{row.category || "-"}</td><td>{row.isTrip ? getTripName(row.tripId) : "-"}</td><td>{row.merchant || row.note || "-"}</td><td>{getAccountName(row.account)}</td><td className="num">{money(row.amount)}</td></tr>) : <tr><td colSpan="8">选择账单文件后点击预览。</td></tr>}
+    <div className="import-summary">{rows.length ? `预览 ${rows.length} 条：可导入 ${ready} 条，重复 ${duplicate} 条，无效 ${invalid} 条。${rows.some((row) => row.mappedByRule) ? " 已套用保存过的映射。" : ""}` : ""}</div>
+    <div className="table-wrap import-preview"><table><thead><tr><th>状态</th><th>日期</th><th>类型</th><th>分类</th><th>差旅</th><th>商户/说明</th><th>账户</th><th className="num">金额</th><th>记住</th></tr></thead><tbody>
+      {rows.length ? rows.slice(0, 100).map((row, index) => {
+        const categoryOptions = row.type === "income" ? incomeCategories : expenseCategories;
+        return <tr key={`${row.importKey}-${index}`}>
+          <td><span className={row.status === "ready" ? "status-pill" : "status-pill skip"}>{row.status === "ready" ? "可导入" : row.status === "duplicate" ? "重复" : "无效"}</span>{row.mappedByRule ? <div className="transaction-meta">已匹配</div> : null}</td>
+          <td><input type="date" value={row.occurredAt || ""} onChange={(event) => onChange(index, "occurredAt", event.target.value)} /></td>
+          <td><select value={row.type} onChange={(event) => onChange(index, "type", event.target.value)}><option value="expense">支出</option><option value="income">收入</option></select></td>
+          <td><select value={row.category} onChange={(event) => onChange(index, "category", event.target.value)}>{categoryOptions.map((category) => <option key={category} value={category}>{category}</option>)}</select></td>
+          <td>{row.isTrip ? getTripName(row.tripId) : "-"}</td>
+          <td><div className="stacked-inputs"><input value={row.merchant || ""} placeholder="商户" onChange={(event) => onChange(index, "merchant", event.target.value)} /><input value={row.note || ""} placeholder="说明" onChange={(event) => onChange(index, "note", event.target.value)} /></div></td>
+          <td><select value={row.account} onChange={(event) => onChange(index, "account", event.target.value)}>{accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></td>
+          <td className="num"><input className="amount-edit" type="number" min="0" step="0.01" value={row.amount || ""} onChange={(event) => onChange(index, "amount", event.target.value)} /></td>
+          <td><label className="checkbox-line compact-checkbox"><input type="checkbox" checked={Boolean(row.rememberMapping)} disabled={row.status !== "ready"} onChange={(event) => onChange(index, "rememberMapping", event.target.checked)} /><span>记住</span></label></td>
+        </tr>;
+      }) : <tr><td colSpan="9">选择账单文件后点击预览。</td></tr>}
     </tbody></table></div>
   </>;
 }

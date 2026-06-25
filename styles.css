@@ -721,3 +721,39 @@ th.num {
     font-size: 30px;
   }
 }
+.stacked-inputs {
+  display: grid;
+  gap: 6px;
+  min-width: 220px;
+}
+
+.row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.amount-edit {
+  min-width: 110px;
+  text-align: right;
+}
+
+.editing-row input,
+.editing-row select,
+.import-preview input,
+.import-preview select {
+  min-height: 36px;
+  padding: 7px 9px;
+}
+
+.compact-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.compact-checkbox input {
+  width: 16px;
+  min-height: 16px;
+}
