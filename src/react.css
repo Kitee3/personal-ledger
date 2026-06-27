@@ -141,3 +141,30 @@
     grid-template-columns: 1fr;
   }
 }
+
+.category-picker {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.9fr) minmax(130px, 1fr);
+  gap: 8px;
+  width: 100%;
+}
+
+.category-picker select:first-of-type:nth-last-of-type(1) {
+  grid-column: 1 / -1;
+}
+
+.category-picker.compact {
+  min-width: 220px;
+  grid-template-columns: minmax(96px, 0.9fr) minmax(112px, 1fr);
+}
+
+.category-picker.compact select {
+  min-width: 0;
+}
+
+@media (max-width: 760px) {
+  .category-picker,
+  .category-picker.compact {
+    grid-template-columns: 1fr;
+  }
+}

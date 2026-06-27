@@ -8,22 +8,83 @@ const firebaseConfigKey = "personal-ledger-firebase-config";
 const autoCloudSyncKey = "personal-ledger-auto-cloud-sync";
 
 const defaultImportCategoryRules = [
-  { id: "income-reimburse", label: "报销/退款", type: "income", keywords: "报销,退费,退款", category: "报销到账" },
   { id: "income-salary", label: "工资", type: "income", keywords: "工资,薪资,薪酬", category: "工资" },
-  { id: "income-bonus", label: "奖金", type: "income", keywords: "奖金", category: "奖金" },
-  { id: "income-subsidy", label: "补贴", type: "income", keywords: "补贴,津贴", category: "补贴" },
-  { id: "income-side", label: "副业", type: "income", keywords: "副业,兼职,稿费", category: "副业" },
-  { id: "expense-food", label: "餐饮", type: "expense", keywords: "餐饮,美食,外卖,饭,餐,咖啡,奶茶,食品,早餐,午餐,晚餐", category: "餐饮" },
-  { id: "expense-transport", label: "交通", type: "expense", keywords: "交通,出行,滴滴,打车,地铁,公交,乘车,火车,机票,高铁,taxi,车票", category: "交通" },
-  { id: "expense-shopping", label: "购物", type: "expense", keywords: "购物,淘宝,天猫,京东,拼多多,超市,便利店,商店,零售", category: "购物" },
-  { id: "expense-housing", label: "住房", type: "expense", keywords: "房租,物业,水费,电费,燃气,住房", category: "住房" },
-  { id: "expense-telecom", label: "通讯", type: "expense", keywords: "通讯,通信,话费,流量,充值缴费,中国移动,中国联通,中国电信,中国广电", category: "通讯" },
-  { id: "expense-medical", label: "医疗", type: "expense", keywords: "医疗,医院,药,挂号,门诊", category: "医疗" },
-  { id: "expense-entertainment", label: "娱乐", type: "expense", keywords: "娱乐,电影,游戏,会员,音乐,视频", category: "娱乐" },
-  { id: "expense-study", label: "学习", type: "expense", keywords: "学习,课程,书,教育,培训", category: "学习" },
-  { id: "expense-relationship", label: "人情", type: "expense", keywords: "人情,红包,转账,亲属卡,家人,朋友", category: "人情" },
-  { id: "expense-trip", label: "差旅", type: "expense", keywords: "差旅,酒店,宾馆,航旅,携程,飞猪,机场,车站", category: "差旅" },
+  { id: "income-performance", label: "绩效", type: "income", keywords: "绩效,奖金,提成", category: "绩效" },
+  { id: "income-transfer-red-packet", label: "红包/转账收入", type: "income", keywords: "红包,转账收入,收款,入账,已收钱", category: "红包/转账收入" },
+  { id: "income-travel-subsidy", label: "差旅补助", type: "income", keywords: "差旅补助,差旅津贴,出差补助", category: "差旅补助" },
+  { id: "income-reimburse", label: "退款/报销", type: "income", keywords: "报销,报销到账,差旅报销", category: "退款/报销" },
+  { id: "expense-takeout", label: "餐饮美食-外卖", type: "expense", keywords: "淘宝闪购,外卖订单,外卖,拉面,饺子,炸鸡,炸排骨,餐饮美食", category: "餐饮美食-外卖" },
+  { id: "expense-dining", label: "餐饮美食-聚餐", type: "expense", keywords: "聚餐,餐馆,饭店,火锅,烧烤,请客", category: "餐饮美食-聚餐" },
+  { id: "expense-groceries-food", label: "餐饮美食-自备", type: "expense", keywords: "牛羊肉,卤肉,零食,食品,生鲜,水果,菜,粮油", category: "餐饮美食-自备" },
+  { id: "expense-drinks", label: "餐饮美食-饮品", type: "expense", keywords: "霸王茶姬,奶茶,咖啡,饮品,茶饮", category: "餐饮美食-饮品" },
+  { id: "expense-daily", label: "购物消费-日用品", type: "expense", keywords: "日用品,顺丰速运,快递,寄件,先寄后付", category: "购物消费-日用品" },
+  { id: "expense-clothing", label: "购物消费-服饰鞋包", type: "expense", keywords: "服饰,衣服,鞋,包,箱包,服装", category: "购物消费-服饰鞋包" },
+  { id: "expense-digital", label: "购物消费-数码电器", type: "expense", keywords: "数码电器,苹果,apple,iphone,watch,充电器,数据线,充电宝,电器", category: "购物消费-数码电器" },
+  { id: "expense-supermarket", label: "购物消费-家居超市", type: "expense", keywords: "超市,便利店,赵一鸣,鲜风商业,百货便利店,商户消费,扫码支付,零售,家居", category: "购物消费-家居超市" },
+  { id: "expense-transit", label: "交通出行-公交地铁", type: "expense", keywords: "公交,地铁,乘车,杭州青奇,先乘车后付款", category: "交通出行-公交地铁" },
+  { id: "expense-taxi", label: "交通出行-打车", type: "expense", keywords: "打车,滴滴,出租车,taxi,网约车,拼车", category: "交通出行-打车" },
+  { id: "expense-train-flight", label: "交通出行-火车机票", type: "expense", keywords: "火车,机票,高铁,动车,航旅,机场,车站", category: "交通出行-火车机票" },
+  { id: "expense-parking", label: "交通出行-停车", type: "expense", keywords: "停车,停车费", category: "交通出行-停车" },
+  { id: "expense-fuel", label: "交通出行-加油", type: "expense", keywords: "中国石化,加油,加油业务,shqbcz,石油", category: "交通出行-加油" },
+  { id: "expense-rent", label: "居住住房-房租", type: "expense", keywords: "房租,租金", category: "居住住房-房租" },
+  { id: "expense-repair", label: "居住住房-维修", type: "expense", keywords: "维修,修理", category: "居住住房-维修" },
+  { id: "expense-utilities", label: "居住住房-水电燃气", type: "expense", keywords: "生活缴费,水费,电费,燃气,水电燃气", category: "居住住房-水电燃气" },
+  { id: "expense-property", label: "居住住房-物业", type: "expense", keywords: "物业,河南建业物业", category: "居住住房-物业" },
+  { id: "expense-movie", label: "娱乐休闲-电影", type: "expense", keywords: "电影,电影票,影院", category: "娱乐休闲-电影" },
+  { id: "expense-show", label: "娱乐休闲-演出", type: "expense", keywords: "演出,演唱会,展览", category: "娱乐休闲-演出" },
+  { id: "expense-travel", label: "娱乐休闲-旅游", type: "expense", keywords: "旅游,景区,门票,酒店,宾馆,携程,飞猪", category: "娱乐休闲-旅游" },
+  { id: "expense-phone", label: "娱乐休闲-话费", type: "expense", keywords: "话费,充值缴费,中国电信,中国广电,中国移动,中国联通", category: "娱乐休闲-话费" },
+  { id: "expense-subscription", label: "娱乐休闲-会员订阅", type: "expense", keywords: "会员,订阅,app store,itunes,yuansfer,connectiva,杭州深度求索,deepseek,音乐,视频,游戏,礼品卡,giftcard", category: "娱乐休闲-会员订阅" },
+  { id: "expense-medical-drug", label: "医疗健康-药品", type: "expense", keywords: "药,药品,药房,药店", category: "医疗健康-药品" },
+  { id: "expense-medical-hospital", label: "医疗健康-医院", type: "expense", keywords: "医院,挂号,门诊", category: "医疗健康-医院" },
+  { id: "expense-medical-checkup", label: "医疗健康-体检", type: "expense", keywords: "体检", category: "医疗健康-体检" },
+  { id: "expense-fitness", label: "医疗健康-健身", type: "expense", keywords: "健身,运动", category: "医疗健康-健身" },
+  { id: "expense-red-packet", label: "人情社交-红包", type: "expense", keywords: "红包,微信红包", category: "人情社交-红包" },
+  { id: "expense-gift-money", label: "人情社交-礼金", type: "expense", keywords: "礼金,份子钱", category: "人情社交-礼金" },
+  { id: "expense-treat", label: "人情社交-请客", type: "expense", keywords: "请客", category: "人情社交-请客" },
+  { id: "expense-gift", label: "人情社交-礼物", type: "expense", keywords: "礼物", category: "人情社交-礼物" },
+  { id: "expense-family-transfer", label: "人情社交-亲友转账", type: "expense", keywords: "妈,爸爸,妈妈,家人,朋友,转账备注:微信转账,亲友转账", category: "人情社交-亲友转账" },
+  { id: "expense-pet", label: "家庭亲友-宠物", type: "expense", keywords: "宠物,猫粮,狗粮", category: "家庭亲友-宠物" },
+  { id: "expense-family", label: "家庭亲友-家庭支出", type: "expense", keywords: "家庭支出", category: "家庭亲友-家庭支出" },
 ];
+
+const expenseCategories = [
+  "餐饮美食-外卖", "餐饮美食-聚餐", "餐饮美食-自备", "餐饮美食-饮品",
+  "购物消费-日用品", "购物消费-服饰鞋包", "购物消费-数码电器", "购物消费-家居超市",
+  "交通出行-公交地铁", "交通出行-打车", "交通出行-火车机票", "交通出行-停车", "交通出行-加油",
+  "居住住房-房租", "居住住房-维修", "居住住房-水电燃气", "居住住房-物业",
+  "娱乐休闲-电影", "娱乐休闲-演出", "娱乐休闲-旅游", "娱乐休闲-话费", "娱乐休闲-会员订阅",
+  "医疗健康-药品", "医疗健康-医院", "医疗健康-体检", "医疗健康-健身",
+  "人情社交-红包", "人情社交-礼金", "人情社交-请客", "人情社交-礼物", "人情社交-亲友转账",
+  "家庭亲友-宠物", "家庭亲友-家庭支出", "其他支出-待确认",
+];
+
+const incomeCategories = ["工资", "绩效", "红包/转账收入", "差旅补助", "退款/报销", "其他收入"];
+
+function splitCategoryName(category) {
+  const [primary, ...rest] = String(category || "").split("-");
+  return { primary: primary || "", secondary: rest.join("-") };
+}
+
+function getCategoryPrimaryOptions(categories) {
+  return [...new Set((categories || []).map((category) => splitCategoryName(category).primary).filter(Boolean))];
+}
+
+function getCategorySecondaryOptions(categories, primary) {
+  return (categories || [])
+    .filter((category) => splitCategoryName(category).primary === primary)
+    .map((category) => ({ value: category, label: splitCategoryName(category).secondary || category }));
+}
+
+function getDefaultCategory(categories) {
+  return categories?.[0] || "";
+}
+
+function normalizeCategoryValue(category, categories) {
+  if (categories.includes(category)) return category;
+  const primaryMatch = categories.find((item) => splitCategoryName(item).primary === category);
+  return primaryMatch || getDefaultCategory(categories);
+}
 
 const defaultState = {
   accounts: [
@@ -33,8 +94,8 @@ const defaultState = {
     { id: "cash", name: "现金", type: "cash", initialBalance: 0 },
     { id: "credit", name: "信用卡", type: "credit_card", initialBalance: 0 },
   ],
-  expenseCategories: ["餐饮", "交通", "购物", "住房", "通讯", "医疗", "娱乐", "学习", "人情", "差旅", "其他"],
-  incomeCategories: ["工资", "奖金", "补贴", "报销到账", "副业", "其他"],
+  expenseCategories,
+  incomeCategories,
   transactions: [],
   trips: [],
   attachments: [],
@@ -46,6 +107,15 @@ const defaultState = {
   importCategoryRules: defaultImportCategoryRules,
   lastAccount: "wechat",
 };
+
+function migrateLoadedState(nextState) {
+  return {
+    ...nextState,
+    expenseCategories: structuredClone(expenseCategories),
+    incomeCategories: structuredClone(incomeCategories),
+    importCategoryRules: structuredClone(defaultImportCategoryRules),
+  };
+}
 
 const views = [
   ["dashboard", "首页"],
@@ -64,11 +134,11 @@ function today() {
 
 function loadState() {
   const raw = localStorage.getItem(storageKey);
-  if (!raw) return structuredClone(defaultState);
+  if (!raw) return migrateLoadedState(structuredClone(defaultState));
   try {
-    return { ...structuredClone(defaultState), ...JSON.parse(raw) };
+    return migrateLoadedState({ ...structuredClone(defaultState), ...JSON.parse(raw) });
   } catch {
-    return structuredClone(defaultState);
+    return migrateLoadedState(structuredClone(defaultState));
   }
 }
 
@@ -256,6 +326,15 @@ function normalizeBillStatus(status, source) {
   return "valid";
 }
 
+function getNonCountingSkipReason({ marker, externalCategory, merchant, note, paymentMethod, statusText }) {
+  const text = `${marker || ""} ${externalCategory || ""} ${merchant || ""} ${note || ""} ${paymentMethod || ""} ${statusText || ""}`.toLowerCase();
+  if (/信用卡自动还款|花呗自动还款|花呗.*还款|信用卡.*还款/.test(text)) return "不计入收支-还款";
+  if (/退款|退费|退款-/.test(text)) return "不计入收支-退款冲正";
+  if (/不计收支/.test(text) && /apple|iphone|watch|天猫|数码电器|未付款|待付款|国补|国家补贴/.test(text)) return "不计入收支-忽略";
+  if (/提现|账户互转|余额宝|转入余额|银行卡转入|转出到银行卡/.test(text)) return "不计入收支-账户互转/提现";
+  return "";
+}
+
 function splitKeywords(value) {
   return cleanBillText(value)
     .split(/[，,、|\s]+/)
@@ -269,15 +348,15 @@ function mapExternalCategory(category, text, type, rules = defaultImportCategory
   const matchedRule = (rules || [])
     .filter((rule) => (rule.type || "expense") === type)
     .find((rule) => splitKeywords(rule.keywords).some((keyword) => joined.includes(keyword)));
-  return matchedRule?.category || "其他";
+  return matchedRule?.category || (type === "income" ? "其他收入" : "其他支出-待确认");
 }
 
 function guessCategory({ merchant, note, category, rules }, type) {
   const text = `${merchant || ""} ${note || ""}`.toLowerCase();
   const mapped = mapExternalCategory(category, text, type, rules);
   if (mapped !== "其他" || !category) return mapped;
-  if (type === "income") return category || "其他";
-  return category || "其他";
+  if (type === "income") return incomeCategories.includes(category) ? category : "其他收入";
+  return expenseCategories.includes(category) ? category : "其他支出-待确认";
 }
 
 function guessAccount({ merchant, note, fallback }) {
@@ -358,8 +437,9 @@ function applyQuickGuess(form, type, fallbackAccount) {
   const note = form.elements.note?.value || "";
   const category = guessCategory({ merchant, note, category: "" }, type);
   const account = guessAccount({ merchant, note, fallback: fallbackAccount });
-  if (form.elements.category && [...form.elements.category.options].some((option) => option.value === category)) {
+  if (form.elements.category) {
     form.elements.category.value = category;
+    form.elements.category.dispatchEvent(new Event("change", { bubbles: true }));
   }
   if (form.elements.account && [...form.elements.account.options].some((option) => option.value === account)) {
     form.elements.account.value = account;
@@ -681,6 +761,7 @@ function App() {
     const statusText = cleanBillText(getFirstValue(row, ["交易状态", "当前状态", "状态"]));
     const sourceOrderId = cleanBillText(getFirstValue(row, ["交易订单号", "交易单号", "商家订单号", "商户单号"]));
     const status = normalizeBillStatus(statusText, source);
+    const nonCountingSkipReason = getNonCountingSkipReason({ marker, externalCategory, merchant, note, paymentMethod, statusText });
     const category = guessCategory({ merchant, note, category: externalCategory, rules: state.importCategoryRules || defaultImportCategoryRules }, type);
     const account = source === "alipay"
       ? guessAccount({ merchant: paymentMethod, note: `${merchant} ${note}`, fallback: "alipay" })
@@ -705,7 +786,7 @@ function App() {
       externalCategory,
       occurredAtTime: occurredAtRaw,
       raw: row,
-      skipReason: status === "skip" ? statusText || "非有效交易" : "",
+      skipReason: nonCountingSkipReason || (status === "skip" ? statusText || "非有效交易" : ""),
       isTrip: Boolean(tripMatched) || category === "差旅",
       tripId: tripMatched ? importTripId : "",
       reimbursementStatus: tripMatched || category === "差旅" ? "pending" : "none",
@@ -875,7 +956,7 @@ function App() {
   function downloadTemplate() {
     const rows = [
       ["日期", "金额", "类型", "分类", "商户", "备注", "账户"],
-      [today(), "25.5", "支出", "餐饮", "示例商户", "午餐", "微信"],
+      [today(), "25.5", "支出", "餐饮美食-外卖", "示例商户", "午餐", "微信"],
     ];
     download("账单导入模板.csv", `\ufeff${toCsv(rows)}`, "text/csv;charset=utf-8");
   }
@@ -1097,13 +1178,13 @@ function App() {
               </button>
             </div>
             <div className="form-grid">
-              <label>
-                分类
-                <select name="category" defaultValue="">
-                  <option value="">自动识别</option>
-                  {categories.map((category) => <option key={category}>{category}</option>)}
-                </select>
-              </label>
+              <CategoryPicker
+                label="分类"
+                name="category"
+                categories={categories}
+                value=""
+                allowAuto
+              />
               <label>
                 账户
                 <select name="account" defaultValue="">
@@ -1466,6 +1547,55 @@ function Bars({ rows }) {
   return <div className="bars">{rows.map(([label, amount]) => <div className="bar-row" key={label}><div className="bar-label"><span>{label}</span><strong>{money(amount)}</strong></div><div className="bar-track"><div className="bar-fill" style={{ width: `${Math.max((amount / max) * 100, 4)}%` }}></div></div></div>)}</div>;
 }
 
+function CategoryPicker({ label, name, categories, value, onChange, allowAuto = false, compact = false }) {
+  const options = categories || [];
+  const [internalValue, setInternalValue] = useState(value || "");
+  const controlled = typeof onChange === "function" && !allowAuto;
+  const rawValue = controlled ? value : internalValue;
+  const normalizedValue = rawValue ? normalizeCategoryValue(rawValue, options) : "";
+  const current = splitCategoryName(normalizedValue);
+  const primaryOptions = getCategoryPrimaryOptions(options);
+  const selectedPrimary = current.primary || primaryOptions[0] || "";
+  const secondaryOptions = getCategorySecondaryOptions(options, selectedPrimary);
+  const selectedValue = normalizedValue || (allowAuto ? "" : secondaryOptions[0]?.value || "");
+
+  function emit(nextValue) {
+    if (controlled) onChange(nextValue);
+    else setInternalValue(nextValue);
+  }
+
+  const controls = (
+    <div className={`category-picker ${compact ? "compact" : ""}`}>
+      <input type="hidden" name={name} value={selectedValue} onChange={() => {}} />
+      {allowAuto ? (
+        <select value={selectedValue ? "manual" : ""} onChange={(event) => emit(event.target.value ? (secondaryOptions[0]?.value || "") : "")}>
+          <option value="">自动识别</option>
+          <option value="manual">手动选择</option>
+        </select>
+      ) : null}
+      {(!allowAuto || selectedValue) ? (
+        <>
+          <select
+            value={selectedPrimary}
+            onChange={(event) => {
+              const nextPrimary = event.target.value;
+              emit(getCategorySecondaryOptions(options, nextPrimary)[0]?.value || nextPrimary);
+            }}
+          >
+            {primaryOptions.map((primary) => <option key={primary} value={primary}>{primary}</option>)}
+          </select>
+          <select value={selectedValue || secondaryOptions[0]?.value || ""} onChange={(event) => emit(event.target.value)}>
+            {secondaryOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </>
+      ) : null}
+    </div>
+  );
+
+  if (!label) return controls;
+  return <label>{label}{controls}</label>;
+}
+
 function ReimbursementStatusSelect({ value, onChange }) {
   return (
     <select className="status-select" value={value || "none"} onChange={(event) => onChange(event.target.value)}>
@@ -1489,7 +1619,7 @@ function TransactionTable({ rows, attachments, accounts, expenseCategories, inco
           return <tr key={row.id} className="editing-row">
             <td><input type="date" value={draft.occurredAt} onChange={(event) => onDraftChange("occurredAt", event.target.value)} /></td>
             <td><select value={draft.type} onChange={(event) => onDraftChange("type", event.target.value)}><option value="expense">支出</option><option value="income">收入</option></select></td>
-            <td><select value={draft.category} onChange={(event) => onDraftChange("category", event.target.value)}>{categoryOptions.map((category) => <option key={category} value={category}>{category}</option>)}</select></td>
+            <td><CategoryPicker categories={categoryOptions} value={draft.category} onChange={(value) => onDraftChange("category", value)} compact /></td>
             <td><div className="stacked-inputs"><input value={draft.merchant} placeholder="商户" onChange={(event) => onDraftChange("merchant", event.target.value)} /><input value={draft.note} placeholder="备注" onChange={(event) => onDraftChange("note", event.target.value)} /></div></td>
             <td><select value={draft.account} onChange={(event) => onDraftChange("account", event.target.value)}>{accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></td>
             <td>{draft.type === "expense" ? <ReimbursementStatusSelect value={draft.reimbursementStatus} onChange={(status) => onDraftChange("reimbursementStatus", status)} /> : "-"}</td>
@@ -1556,7 +1686,7 @@ function ImportRuleManager({ rules, categoryRules, accounts, expenseCategories, 
               <td><input value={rule.label || ""} placeholder="规则名称" onChange={(event) => onCategoryRuleChange(index, "label", event.target.value)} /></td>
               <td><select value={rule.type || "expense"} onChange={(event) => onCategoryRuleChange(index, "type", event.target.value)}><option value="expense">支出</option><option value="income">收入</option></select></td>
               <td><textarea rows="2" value={rule.keywords || ""} placeholder="关键词用逗号分隔" onChange={(event) => onCategoryRuleChange(index, "keywords", event.target.value)} /></td>
-              <td><select value={rule.category || "其他"} onChange={(event) => onCategoryRuleChange(index, "category", event.target.value)}>{categories.map((category) => <option key={category} value={category}>{category}</option>)}</select></td>
+              <td><CategoryPicker categories={categories} value={rule.category || getDefaultCategory(categories)} onChange={(value) => onCategoryRuleChange(index, "category", value)} compact /></td>
               <td><button className="delete-btn" type="button" onClick={() => onCategoryRuleDelete(index)}>删除</button></td>
             </tr>;
           }) : <tr><td colSpan="5">没有自动分类规则。可以新增规则，或恢复默认。</td></tr>}
@@ -1579,7 +1709,7 @@ function ImportRuleManager({ rules, categoryRules, accounts, expenseCategories, 
               <td><input value={rule.matchText || ""} placeholder="商户或说明关键词" onChange={(event) => onChange(index, "matchText", event.target.value)} /></td>
               <td><input value={rule.label || ""} placeholder="显示名称" onChange={(event) => onChange(index, "label", event.target.value)} /></td>
               <td><select value={rule.type || "expense"} onChange={(event) => onChange(index, "type", event.target.value)}><option value="expense">支出</option><option value="income">收入</option></select></td>
-              <td><select value={rule.category || "其他"} onChange={(event) => onChange(index, "category", event.target.value)}>{categories.map((category) => <option key={category} value={category}>{category}</option>)}</select></td>
+              <td><CategoryPicker categories={categories} value={rule.category || getDefaultCategory(categories)} onChange={(value) => onChange(index, "category", value)} compact /></td>
               <td><select value={rule.account || "wechat"} onChange={(event) => onChange(index, "account", event.target.value)}>{accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></td>
               <td className="transaction-meta">{rule.updatedAt ? rule.updatedAt.slice(0, 10) : "-"}</td>
               <td><button className="delete-btn" type="button" onClick={() => onDelete(index)}>删除</button></td>
@@ -1604,7 +1734,7 @@ function ImportPreview({ rows, accounts, expenseCategories, incomeCategories, on
           <td><span className={row.status === "ready" ? "status-pill" : "status-pill skip"}>{row.status === "ready" ? "可导入" : row.status === "duplicate" ? "重复" : "无效"}</span>{row.mappedByRule ? <div className="transaction-meta">已匹配</div> : null}</td>
           <td><input type="date" value={row.occurredAt || ""} onChange={(event) => onChange(index, "occurredAt", event.target.value)} /></td>
           <td><select value={row.type} onChange={(event) => onChange(index, "type", event.target.value)}><option value="expense">支出</option><option value="income">收入</option></select></td>
-          <td><select value={row.category} onChange={(event) => onChange(index, "category", event.target.value)}>{categoryOptions.map((category) => <option key={category} value={category}>{category}</option>)}</select></td>
+          <td><CategoryPicker categories={categoryOptions} value={row.category} onChange={(value) => onChange(index, "category", value)} compact /></td>
           <td>{row.isTrip ? getTripName(row.tripId) : "-"}</td>
           <td><div className="stacked-inputs"><input value={row.merchant || ""} placeholder="商户" onChange={(event) => onChange(index, "merchant", event.target.value)} /><input value={row.note || ""} placeholder="说明" onChange={(event) => onChange(index, "note", event.target.value)} /></div></td>
           <td><select value={row.account} onChange={(event) => onChange(index, "account", event.target.value)}>{accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></td>
