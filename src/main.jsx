@@ -459,7 +459,7 @@ function App() {
   const [activeView, setActiveView] = useState(views.some(([key]) => key === initialView) ? initialView : "dashboard");
   const [state, setState] = useState(loadState);
   const [entryType, setEntryType] = useState("expense");
-  const [filters, setFilters] = useState({ search: "", type: "all", trip: "all" });
+  const [filters, setFilters] = useState({ search: "", type: "all", trip: "all", category: "all" });
   const [pendingImportRows, setPendingImportRows] = useState([]);
   const [editingTransactionId, setEditingTransactionId] = useState("");
   const [transactionDraft, setTransactionDraft] = useState(null);
@@ -528,6 +528,21 @@ function App() {
       .filter((transaction) => transaction.type === "expense")
       .forEach((transaction) => groups.set(transaction.category, (groups.get(transaction.category) || 0) + Number(transaction.amount)));
     return [...groups.entries()].sort((a, b) => b[1] - a[1]);
+  }
+
+  function getTransactionCategoryOptions(type = filters.type) {
+    if (type === "income") return state.incomeCategories;
+    if (type === "expense") return state.expenseCategories;
+    return [...new Set([...state.expenseCategories, ...state.incomeCategories])];
+  }
+
+  function updateTransactionTypeFilter(type) {
+    const categoryOptions = getTransactionCategoryOptions(type);
+    setFilters((current) => ({
+      ...current,
+      type,
+      category: current.category === "all" || categoryOptions.includes(current.category) ? current.category : "all",
+    }));
   }
 
   function exportJson() {
@@ -1076,10 +1091,11 @@ function App() {
   }, []);
 
   const categories = entryType === "expense" ? state.expenseCategories : state.incomeCategories;
-  const recent = state.transactions.filter((transaction) => !transaction.deletedAt).sort(byDateDesc).slice(0, 10);
+  const transactionCategoryOptions = getTransactionCategoryOptions();
   const filteredTransactions = state.transactions
     .filter((transaction) => !transaction.deletedAt)
     .filter((transaction) => (filters.type === "all" ? true : transaction.type === filters.type))
+    .filter((transaction) => (filters.category === "all" ? true : transaction.category === filters.category))
     .filter((transaction) => (filters.trip === "all" ? true : filters.trip === "trip" ? transaction.isTrip : !transaction.isTrip))
     .filter((transaction) => {
       const search = filters.search.trim().toLowerCase();
@@ -1147,19 +1163,18 @@ function App() {
             />
             <div className="two-column">
               <section className="panel">
-                <div className="panel-head">
-                  <h3>最近流水</h3>
-                  <button className="text-btn" type="button" onClick={() => setActiveView("transactions")}>
-                    查看全部
-                  </button>
-                </div>
-                <div className="list">{recent.length ? recent.map((item) => <TransactionCard key={item.id} item={item} attachments={state.attachments || []} getAccountName={getAccountName} getTripName={getTripName} />) : <div className="empty">还没有流水，先记一笔。</div>}</div>
+                <h3>最近 6 个月收支趋势</h3>
+                <MonthChart transactions={state.transactions} />
               </section>
               <section className="panel">
                 <h3>支出分类 Top 5</h3>
-                <Bars rows={groupExpenseByCategory(monthTransactions).slice(0, 5)} />
+                <Bars rows={groupExpenseByCategory(monthTransactions).slice(0, 5)} showPercent />
               </section>
             </div>
+            <section className="panel calendar-panel">
+              <h3>本月日历收支</h3>
+              <CashflowCalendar transactions={state.transactions} />
+            </section>
           </>
         )}
 
@@ -1263,10 +1278,14 @@ function App() {
           <>
             <div className="toolbar">
               <input placeholder="搜索商户、备注、分类" value={filters.search} onChange={(event) => setFilters({ ...filters, search: event.target.value })} />
-              <select value={filters.type} onChange={(event) => setFilters({ ...filters, type: event.target.value })}>
+              <select value={filters.type} onChange={(event) => updateTransactionTypeFilter(event.target.value)}>
                 <option value="all">全部类型</option>
                 <option value="expense">支出</option>
                 <option value="income">收入</option>
+              </select>
+              <select value={filters.category} onChange={(event) => setFilters({ ...filters, category: event.target.value })}>
+                <option value="all">全部分类</option>
+                {transactionCategoryOptions.map((category) => <option key={category} value={category}>{category}</option>)}
               </select>
               <select value={filters.trip} onChange={(event) => setFilters({ ...filters, trip: event.target.value })}>
                 <option value="all">全部流水</option>
@@ -1541,10 +1560,15 @@ function TransactionCard({ item, attachments, getAccountName, getTripName }) {
   );
 }
 
-function Bars({ rows }) {
+function Bars({ rows, showPercent = false }) {
   if (!rows.length) return <div className="empty">暂无支出数据。</div>;
+  const total = rows.reduce((sum, [, amount]) => sum + Number(amount || 0), 0);
   const max = Math.max(...rows.map(([, amount]) => amount), 1);
-  return <div className="bars">{rows.map(([label, amount]) => <div className="bar-row" key={label}><div className="bar-label"><span>{label}</span><strong>{money(amount)}</strong></div><div className="bar-track"><div className="bar-fill" style={{ width: `${Math.max((amount / max) * 100, 4)}%` }}></div></div></div>)}</div>;
+  return <div className="bars">{rows.map(([label, amount]) => {
+    const percent = total ? (Number(amount || 0) / total) * 100 : 0;
+    const width = Math.max((Number(amount || 0) / max) * 100, 4) + "%";
+    return <div className="bar-row" key={label}><div className="bar-label"><span>{label}</span><span className="bar-value"><strong>{money(amount)}</strong>{showPercent ? <em>{percent.toFixed(1)}%</em> : null}</span></div><div className="bar-track"><div className="bar-fill" style={{ width }}></div></div></div>;
+  })}</div>;
 }
 
 function CategoryPicker({ label, name, categories, value, onChange, allowAuto = false, compact = false }) {
@@ -1651,6 +1675,31 @@ function AccountBalances({ state }) {
     const delta = state.transactions.filter((transaction) => !transaction.deletedAt && transaction.account === account.id).reduce((sum, transaction) => sum + (transaction.type === "income" ? Number(transaction.amount) : -Number(transaction.amount)), 0);
     return <div className="account-item" key={account.id}><div className="transaction-row"><strong>{account.name}</strong><strong>{money(Number(account.initialBalance || 0) + delta)}</strong></div><div className="transaction-meta">{account.type}</div></div>;
   })}</div>;
+}
+
+function CashflowCalendar({ transactions }) {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const monthKey = getMonthKey(now);
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const firstWeekday = (new Date(year, month, 1).getDay() + 6) % 7;
+  const days = Array.from({ length: daysInMonth }, (_, index) => ({
+    day: index + 1,
+    key: monthKey + "-" + String(index + 1).padStart(2, "0"),
+    income: 0,
+    expense: 0,
+  }));
+  transactions
+    .filter((transaction) => !transaction.deletedAt && String(transaction.occurredAt || "").startsWith(monthKey))
+    .forEach((transaction) => {
+      const day = Number(String(transaction.occurredAt).slice(8, 10));
+      const bucket = days[day - 1];
+      if (bucket) bucket[transaction.type === "income" ? "income" : "expense"] += Number(transaction.amount);
+    });
+  const cells = [...Array(firstWeekday).fill(null), ...days];
+  while (cells.length % 7) cells.push(null);
+  return <div className="cashflow-calendar"><div className="calendar-weekdays">{["一", "二", "三", "四", "五", "六", "日"].map((day) => <span key={day}>{day}</span>)}</div><div className="calendar-grid">{cells.map((day, index) => day ? <div className="calendar-day" key={day.key}><strong>{day.day}</strong><div className="calendar-amounts">{day.income ? <span className="money-income">+{money(day.income)}</span> : null}{day.expense ? <span className="money-expense">-{money(day.expense)}</span> : null}</div></div> : <div className="calendar-day empty-day" key={"empty-" + index}></div>)}</div></div>;
 }
 
 function MonthChart({ transactions }) {

@@ -332,6 +332,25 @@ button {
   font-size: 14px;
 }
 
+.bar-label > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bar-value {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.bar-value em {
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+}
+
 .bar-track {
   height: 10px;
   border-radius: 999px;
@@ -456,7 +475,7 @@ textarea {
 
 .toolbar {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) 160px 160px;
+  grid-template-columns: minmax(220px, 1fr) 150px minmax(180px, 220px) 160px;
   gap: 12px;
   margin-bottom: 14px;
 }
@@ -657,6 +676,77 @@ th.num {
   background: var(--danger);
 }
 
+.calendar-panel {
+  margin-top: 18px;
+}
+
+.cashflow-calendar {
+  display: grid;
+  gap: 10px;
+}
+
+.calendar-weekdays,
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.calendar-weekdays span {
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.calendar-day {
+  min-height: 86px;
+  padding: 9px;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.calendar-day strong {
+  font-size: 13px;
+}
+
+.calendar-day.empty-day {
+  background: var(--surface-strong);
+  border-style: dashed;
+}
+
+.calendar-amounts {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.calendar-amounts span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .calendar-weekdays,
+  .calendar-grid {
+    gap: 5px;
+  }
+
+  .calendar-day {
+    min-height: 66px;
+    padding: 6px;
+  }
+
+  .calendar-amounts {
+    font-size: 10px;
+  }
+}
+
 @media (max-width: 960px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -781,3 +871,4 @@ th.num {
   min-height: 58px;
   padding: 7px 9px;
 }
+
